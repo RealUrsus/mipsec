@@ -258,44 +258,6 @@ Usually requires running as `root` or with `CAP_NET_ADMIN` capability.
 - Verify tunnel names match CHILD_SA configuration names
 - Run with `--verbose` to see detailed output
 
-## Recent Improvements
-
-### Version 2.0 Changes
-
-**Fixed Issues:**
-- ✅ Fixed critical bug on line 88 (variable name mismatch when removing tunnels)
-- ✅ Renamed class to `TunnelChecker` (PEP 8 compliance)
-- ✅ Added complete type hints throughout the codebase
-- ✅ Added comprehensive docstrings for all methods
-- ✅ Fixed logging handler duplication issue
-- ✅ Fixed typos: "Reseting" → "Resetting", "occured" → "occurred"
-
-**New Features:**
-- ✅ Auto-Recovery: Now executes `ipsec up` after `ipsec down` to restore tunnels
-- ✅ Daemon Mode: Continuous monitoring with configurable intervals
-- ✅ Retry Logic: Exponential backoff retry mechanism for failed operations
-- ✅ Better Error Handling: Improved VICI connection error handling with informative messages
-
-**Infrastructure:**
-- ✅ Added `requirements.txt` for dependency management
-- ✅ Documented systemd service integration
-
-### Future Improvement Suggestions
-
-**Functional Enhancements:**
-1. **Health Checks**: Ping through tunnel to verify actual connectivity (not just SA state)
-2. **Metrics Export**: Support for Prometheus, InfluxDB, or other monitoring systems
-3. **Configurable Paths**: Make `/usr/sbin/ipsec` path configurable
-4. **Notification System**: Email/webhook alerts when tunnels go down
-5. **Multiple Check Strategies**: Support for active probing, not just passive SA monitoring
-
-**Infrastructure:**
-6. Add unit and integration tests
-7. Add GitHub Actions for CI/CD
-8. Create pre-built packages (deb, rpm)
-9. Add configuration validation tool
-10. Support for multiple configuration file formats (JSON, TOML)
-
 ## Architecture
 
 ```
@@ -342,11 +304,11 @@ Contributions are welcome! Priority areas for future development:
 
 ## License
 
-[Specify your license here]
+MIP
 
 ## Author
 
-[Specify author/maintainer here]
+Real.Ursus
 
 ## See Also
 
