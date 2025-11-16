@@ -107,13 +107,13 @@ class TunnelChecker:
             if file:
                 file.close()
 
-    def _run_ipsec_command(self, action: str, tunnel: str) -> bool:
+    def _run_swanctl_command(self, action: str, tunnel: str) -> bool:
         """
-        Run an ipsec command with retry logic.
+        Run a swanctl command with retry logic.
 
         Args:
-            action: The ipsec action (e.g., 'down', 'up').
-            tunnel: The tunnel name to operate on.
+            action: The swanctl action ('terminate' or 'initiate').
+            tunnel: The tunnel name (CHILD_SA) to operate on.
 
         Returns:
             True if the command succeeded, False otherwise.
@@ -121,24 +121,24 @@ class TunnelChecker:
         for attempt in range(self.max_retries):
             try:
                 result = subprocess.run(
-                    ['/usr/sbin/ipsec', action, tunnel],
+                    ['/usr/sbin/swanctl', f'--{action}', '--child', tunnel],
                     capture_output=True,
                     timeout=30
                 )
 
                 if result.returncode == 0:
-                    self.logging.debug(f"Successfully executed 'ipsec {action} {tunnel}'")
+                    self.logging.debug(f"Successfully executed 'swanctl --{action} --child {tunnel}'")
                     return True
                 else:
                     self.logging.warning(
-                        f"'ipsec {action} {tunnel}' returned non-zero exit code {result.returncode}. "
+                        f"'swanctl --{action} --child {tunnel}' returned non-zero exit code {result.returncode}. "
                         f"Stderr: {result.stderr.decode('utf-8', errors='ignore')}"
                     )
 
             except subprocess.TimeoutExpired:
-                self.logging.warning(f"'ipsec {action} {tunnel}' timed out on attempt {attempt + 1}/{self.max_retries}")
+                self.logging.warning(f"'swanctl --{action} --child {tunnel}' timed out on attempt {attempt + 1}/{self.max_retries}")
             except Exception as e:
-                self.logging.warning(f"'ipsec {action} {tunnel}' failed on attempt {attempt + 1}/{self.max_retries}: {e}")
+                self.logging.warning(f"'swanctl --{action} --child {tunnel}' failed on attempt {attempt + 1}/{self.max_retries}: {e}")
 
             # Exponential backoff if not the last attempt
             if attempt < self.max_retries - 1:
@@ -146,31 +146,31 @@ class TunnelChecker:
                 self.logging.debug(f"Retrying in {delay} seconds...")
                 time.sleep(delay)
 
-        self.logging.error(f"Failed to execute 'ipsec {action} {tunnel}' after {self.max_retries} attempts")
+        self.logging.error(f"Failed to execute 'swanctl --{action} --child {tunnel}' after {self.max_retries} attempts")
         return False
 
     def resetTunnels(self, downTunnels: List[str]) -> None:
         """
-        Reset down tunnels by bringing them down and then back up.
+        Reset down tunnels by terminating and then re-initiating them.
 
         Args:
-            downTunnels: List of tunnel names to reset.
+            downTunnels: List of tunnel names (CHILD_SAs) to reset.
         """
         for tunnel in downTunnels:
             self.logging.info(f"Resetting {tunnel} tunnel")
 
-            # First, bring the tunnel down
-            if self._run_ipsec_command('down', tunnel):
+            # First, terminate the tunnel
+            if self._run_swanctl_command('terminate', tunnel):
                 # Wait a moment before bringing it back up
                 time.sleep(1)
 
-                # Then bring it back up
-                if self._run_ipsec_command('up', tunnel):
+                # Then initiate it again
+                if self._run_swanctl_command('initiate', tunnel):
                     self.logging.info(f"Successfully reset {tunnel}")
                 else:
-                    self.logging.error(f"Failed to bring {tunnel} back up")
+                    self.logging.error(f"Failed to initiate {tunnel}")
             else:
-                self.logging.error(f"Failed to bring {tunnel} down, skipping 'up' command")
+                self.logging.error(f"Failed to terminate {tunnel}, skipping initiation")
 
     def run(self) -> int:
         """
@@ -249,7 +249,7 @@ def run_daemon(checker: TunnelChecker, interval: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="A script to monitor and reset StrongSwan IPsec tunnels via VICI."
+        description="A script to monitor and reset StrongSwan IPsec tunnels via VICI using swanctl (modern StrongSwan)."
     )
     parser.add_argument(
         "--socket",
@@ -289,7 +289,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--max-retries",
-        help="Maximum number of retries for failed ipsec commands (default: 3)",
+        help="Maximum number of retries for failed swanctl commands (default: 3)",
         type=int,
         default=3,
     )

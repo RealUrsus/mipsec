@@ -1,10 +1,10 @@
 # MIPsec - StrongSwan Tunnel Monitor
 
-A lightweight Python tool for monitoring and managing StrongSwan IPsec tunnels via the VICI (Versatile IKE Control Interface) protocol.
+A lightweight Python tool for monitoring and managing StrongSwan IPsec tunnels via the VICI (Versatile IKE Control Interface) protocol using modern `swanctl` commands.
 
 ## Overview
 
-MIPsec monitors configured IPsec CHILD_SA tunnels and automatically resets connections that are down. It's designed to work as a monitoring script that can be run periodically via cron or other schedulers.
+MIPsec monitors configured IPsec CHILD_SA tunnels and automatically resets connections that are down. It uses the modern `swanctl` command-line tool (not legacy `ipsec` commands) and is optimized for Ubuntu 24.04 and other modern Linux distributions with StrongSwan 5.9+. The tool can be run periodically via cron, systemd timers, or continuously in daemon mode.
 
 ## Features
 
@@ -20,11 +20,24 @@ MIPsec monitors configured IPsec CHILD_SA tunnels and automatically resets conne
 
 ## Requirements
 
-- Python 3.6+
-- StrongSwan with VICI plugin enabled
-- Python packages:
-  - `vici` - StrongSwan VICI protocol library
-  - `PyYAML` - YAML configuration parsing
+- **Operating System**: Ubuntu 24.04 LTS (or other modern Linux with StrongSwan 5.9+)
+- **Python**: 3.10+ (included in Ubuntu 24.04)
+- **StrongSwan**: 5.9+ with VICI plugin and `swanctl` enabled
+- **Python packages**:
+  - `vici` >= 5.9.0 - StrongSwan VICI protocol library
+  - `PyYAML` >= 6.0 - YAML configuration parsing
+
+### Ubuntu 24.04 Installation
+
+```bash
+# Install StrongSwan with swanctl
+sudo apt update
+sudo apt install strongswan strongswan-swanctl python3-pip
+
+# Verify swanctl is available
+which swanctl
+# Should output: /usr/sbin/swanctl
+```
 
 ## Installation
 
@@ -117,7 +130,7 @@ usage: mipsec.py [-h] [--socket SOCKET] [--config CONFIG] [--verbose] [--quiet]
                  [--retry-delay RETRY_DELAY]
                  [tunnels ...]
 
-A script to monitor and reset StrongSwan IPsec tunnels via VICI.
+A script to monitor and reset StrongSwan IPsec tunnels via VICI using swanctl (modern StrongSwan).
 
 positional arguments:
   tunnels                       The list of CHILD_SAs to monitor and reestablish
@@ -130,7 +143,7 @@ optional arguments:
   --quiet                       Disable any non-error output from the script
   --daemon                      Run in daemon mode with continuous monitoring
   --interval INTERVAL           Interval in seconds between checks in daemon mode (default: 300)
-  --max-retries MAX_RETRIES     Maximum number of retries for failed ipsec commands (default: 3)
+  --max-retries MAX_RETRIES     Maximum number of retries for failed swanctl commands (default: 3)
   --retry-delay RETRY_DELAY     Base delay in seconds between retries, uses exponential backoff (default: 2)
 ```
 
@@ -203,13 +216,13 @@ To run with logging:
 
 1. **Load Configuration**: Reads tunnel names from config file and/or command-line arguments
 2. **Connect to VICI**: Establishes connection to StrongSwan's VICI socket
-3. **Query Status**: Lists all Security Associations (SAs) and their CHILD_SAs
+3. **Query Status**: Lists all Security Associations (SAs) and their CHILD_SAs via VICI
 4. **Check State**: Verifies each configured tunnel is in `INSTALLED` state
 5. **Reset Down Tunnels**: For any non-operational tunnels:
-   - Executes `ipsec down <tunnel>` to tear down the connection
+   - Executes `swanctl --terminate --child <tunnel>` to tear down the CHILD_SA
    - Waits 1 second
-   - Executes `ipsec up <tunnel>` to re-establish the connection
-6. **Retry on Failure**: If ipsec commands fail, retries with exponential backoff (configurable)
+   - Executes `swanctl --initiate --child <tunnel>` to re-establish the connection
+6. **Retry on Failure**: If swanctl commands fail, retries with exponential backoff (configurable)
 7. **Continuous Monitoring** (Daemon Mode): Repeats the check at configured intervals
 
 ### Version Compatibility
@@ -232,10 +245,24 @@ The tool handles two StrongSwan naming conventions:
 
 The script requires:
 - Read access to VICI socket (typically `/var/run/charon.vici`)
-- Execute permissions for `/usr/sbin/ipsec`
-- Appropriate permissions to down IPsec connections
+- Execute permissions for `/usr/sbin/swanctl`
+- Appropriate permissions to terminate and initiate IPsec CHILD_SAs
 
 Usually requires running as `root` or with `CAP_NET_ADMIN` capability.
+
+### Verify Permissions
+
+```bash
+# Check VICI socket access
+ls -l /var/run/charon.vici
+
+# Check swanctl availability
+which swanctl
+swanctl --version
+
+# Test swanctl access (requires root)
+sudo swanctl --list-sas
+```
 
 ## Troubleshooting
 
@@ -254,11 +281,43 @@ Usually requires running as `root` or with `CAP_NET_ADMIN` capability.
 - Verify permissions to access socket
 
 ### Tunnels Not Resetting
-- Check script has permission to execute `/usr/sbin/ipsec`
-- Verify tunnel names match CHILD_SA configuration names
+- Check script has permission to execute `/usr/sbin/swanctl`
+- Verify tunnel names match CHILD_SA configuration names (not connection names)
+- Test manually: `sudo swanctl --terminate --child <tunnel-name>`
+- Then: `sudo swanctl --initiate --child <tunnel-name>`
 - Run with `--verbose` to see detailed output
 
+### "swanctl command not found"
+- Install swanctl: `sudo apt install strongswan-swanctl`
+- Verify installation: `which swanctl`
+- Note: Legacy `ipsec` commands are NOT supported in this version
+
+### Modern vs Legacy StrongSwan
+This tool uses **modern swanctl** (StrongSwan 5.9+):
+- Configuration: `/etc/swanctl/conf.d/`
+- Commands: `swanctl --terminate`, `swanctl --initiate`
+- Not compatible with legacy `ipsec.conf` / `ipsec` commands
+
 ## Recent Improvements
+
+### Version 2.1 Changes (Latest - swanctl Migration)
+
+**Breaking Changes:**
+- ⚠️ **Migrated from legacy `ipsec` to modern `swanctl` commands**
+- ⚠️ Now requires StrongSwan 5.9+ with swanctl installed
+- ⚠️ Not compatible with legacy `ipsec.conf` configurations
+
+**Updated Commands:**
+- ✅ Replace `ipsec down` → `swanctl --terminate --child`
+- ✅ Replace `ipsec up` → `swanctl --initiate --child`
+- ✅ Updated all command paths and help text
+- ✅ Optimized for Ubuntu 24.04 LTS
+
+**Documentation:**
+- ✅ Added Ubuntu 24.04 installation guide
+- ✅ Updated architecture diagram for swanctl
+- ✅ Added troubleshooting for modern vs legacy StrongSwan
+- ✅ Updated all examples and command references
 
 ### Version 2.0 Changes
 
@@ -271,7 +330,7 @@ Usually requires running as `root` or with `CAP_NET_ADMIN` capability.
 - ✅ Fixed typos: "Reseting" → "Resetting", "occured" → "occurred"
 
 **New Features:**
-- ✅ Auto-Recovery: Now executes `ipsec up` after `ipsec down` to restore tunnels
+- ✅ Auto-Recovery: Automatically terminates and re-initiates tunnels
 - ✅ Daemon Mode: Continuous monitoring with configurable intervals
 - ✅ Retry Logic: Exponential backoff retry mechanism for failed operations
 - ✅ Better Error Handling: Improved VICI connection error handling with informative messages
@@ -299,35 +358,39 @@ Usually requires running as `root` or with `CAP_NET_ADMIN` capability.
 ## Architecture
 
 ```
-┌─────────────────────────┐
-│     mipsec.py           │
-│   (Main Script)         │
-│  ┌─────────────────┐    │
-│  │ TunnelChecker   │    │
-│  │ - Type Safe     │    │
-│  │ - Retry Logic   │    │
-│  │ - Auto-Recovery │    │
-│  └─────────────────┘    │
-└────────┬────────────────┘
+┌─────────────────────────────────────────┐
+│           mipsec.py                     │
+│         (Main Script)                   │
+│  ┌───────────────────────────────┐      │
+│  │     TunnelChecker             │      │
+│  │  - Type Safe (Python 3.10+)   │      │
+│  │  - Retry Logic                │      │
+│  │  - Auto-Recovery              │      │
+│  │  - Modern swanctl             │      │
+│  └───────────────────────────────┘      │
+└────────┬────────────────────────────────┘
          │
-         ├─── Reads ────────────────► mipsec.yaml (Config)
+         ├─── Reads ────────────────────────► mipsec.yaml (Config)
          │
-         ├─── Connects ─────────────► /var/run/charon.vici (VICI Socket)
+         ├─── Connects (VICI) ──────────────► /var/run/charon.vici
+         │                                     (StrongSwan 5.9+)
          │
-         ├─── Queries ──────────────► StrongSwan (SA Status via VICI)
+         ├─── Queries ──────────────────────► list_sas() via VICI
+         │                                     (Check CHILD_SA state)
          │
          └─── For Down Tunnels:
-              ├─── Execute ────────► /usr/sbin/ipsec down <tunnel>
+              ├─── Execute ─────────────────► swanctl --terminate --child <name>
               ├─── Wait 1s
-              ├─── Execute ────────► /usr/sbin/ipsec up <tunnel>
-              └─── Retry on Failure (Exponential Backoff)
+              ├─── Execute ─────────────────► swanctl --initiate --child <name>
+              └─── Retry on Failure ────────► Exponential Backoff (2s, 4s, 8s...)
 
-         ┌──────────────────┐
-         │  Daemon Mode     │
-         │  (Optional)      │
-         │  Repeats every   │
-         │  N seconds       │
-         └──────────────────┘
+         ┌────────────────────────────┐
+         │      Daemon Mode           │
+         │      (Optional)            │
+         │   Continuous Monitoring    │
+         │   Check every N seconds    │
+         │   (default: 300s / 5min)   │
+         └────────────────────────────┘
 ```
 
 ## Contributing
