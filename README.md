@@ -292,16 +292,6 @@ Usually requires running as `root` or with `CAP_NET_ADMIN` capability.
          └──────────────────┘
 ```
 
-## Contributing
-
-Contributions are welcome! Priority areas for future development:
-1. **Testing**: Add unit and integration tests
-2. **Health Checks**: Implement active connectivity verification (ping through tunnel)
-3. **Metrics Export**: Add Prometheus/InfluxDB support
-4. **Notification System**: Email/webhook alerts for tunnel failures
-5. **CI/CD**: Set up GitHub Actions for automated testing and releases
-6. **Packaging**: Create deb/rpm packages for easy installation
-
 ## License
 
 MIP
