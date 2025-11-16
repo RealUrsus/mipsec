@@ -311,7 +311,6 @@ This tool uses **modern swanctl** (StrongSwan 5.9+):
 - ✅ Replace `ipsec down` → `swanctl --terminate --child`
 - ✅ Replace `ipsec up` → `swanctl --initiate --child`
 - ✅ Updated all command paths and help text
-- ✅ Optimized for Ubuntu 24.04 LTS
 
 **Documentation:**
 - ✅ Added Ubuntu 24.04 installation guide
@@ -319,41 +318,14 @@ This tool uses **modern swanctl** (StrongSwan 5.9+):
 - ✅ Added troubleshooting for modern vs legacy StrongSwan
 - ✅ Updated all examples and command references
 
-### Version 2.0 Changes
-
-**Fixed Issues:**
-- ✅ Fixed critical bug on line 88 (variable name mismatch when removing tunnels)
-- ✅ Renamed class to `TunnelChecker` (PEP 8 compliance)
-- ✅ Added complete type hints throughout the codebase
-- ✅ Added comprehensive docstrings for all methods
-- ✅ Fixed logging handler duplication issue
-- ✅ Fixed typos: "Reseting" → "Resetting", "occured" → "occurred"
-
-**New Features:**
-- ✅ Auto-Recovery: Automatically terminates and re-initiates tunnels
-- ✅ Daemon Mode: Continuous monitoring with configurable intervals
-- ✅ Retry Logic: Exponential backoff retry mechanism for failed operations
-- ✅ Better Error Handling: Improved VICI connection error handling with informative messages
-
-**Infrastructure:**
-- ✅ Added `requirements.txt` for dependency management
-- ✅ Documented systemd service integration
-
 ### Future Improvement Suggestions
 
 **Functional Enhancements:**
 1. **Health Checks**: Ping through tunnel to verify actual connectivity (not just SA state)
 2. **Metrics Export**: Support for Prometheus, InfluxDB, or other monitoring systems
-3. **Configurable Paths**: Make `/usr/sbin/ipsec` path configurable
+3. **Configurable Paths**: Make binary path configurable
 4. **Notification System**: Email/webhook alerts when tunnels go down
 5. **Multiple Check Strategies**: Support for active probing, not just passive SA monitoring
-
-**Infrastructure:**
-6. Add unit and integration tests
-7. Add GitHub Actions for CI/CD
-8. Create pre-built packages (deb, rpm)
-9. Add configuration validation tool
-10. Support for multiple configuration file formats (JSON, TOML)
 
 ## Architecture
 
@@ -393,23 +365,13 @@ This tool uses **modern swanctl** (StrongSwan 5.9+):
          └────────────────────────────┘
 ```
 
-## Contributing
-
-Contributions are welcome! Priority areas for future development:
-1. **Testing**: Add unit and integration tests
-2. **Health Checks**: Implement active connectivity verification (ping through tunnel)
-3. **Metrics Export**: Add Prometheus/InfluxDB support
-4. **Notification System**: Email/webhook alerts for tunnel failures
-5. **CI/CD**: Set up GitHub Actions for automated testing and releases
-6. **Packaging**: Create deb/rpm packages for easy installation
-
 ## License
 
-[Specify your license here]
+MIT
 
 ## Author
 
-[Specify author/maintainer here]
+Real.Ursus
 
 ## See Also
 
