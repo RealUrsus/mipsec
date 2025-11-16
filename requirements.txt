@@ -1,0 +1,8 @@
+# MIPsec - StrongSwan Tunnel Monitor
+# Python dependencies
+
+# StrongSwan VICI protocol library
+vici>=5.9.0
+
+# YAML configuration parsing
+PyYAML>=6.0

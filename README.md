@@ -9,11 +9,14 @@ MIPsec monitors configured IPsec CHILD_SA tunnels and automatically resets conne
 ## Features
 
 - 🔍 **Tunnel Status Monitoring**: Checks if configured tunnels are in INSTALLED state
-- 🔄 **Automatic Reset**: Downs tunnels that are detected as non-operational
+- 🔄 **Automatic Recovery**: Downs and brings back up tunnels that are detected as non-operational
+- 🔁 **Retry Logic**: Configurable retry attempts with exponential backoff for failed operations
+- 🤖 **Daemon Mode**: Continuous monitoring with configurable check intervals
 - 📝 **Flexible Configuration**: Support for YAML config files and command-line arguments
 - 🔧 **Version Compatibility**: Handles both old and new StrongSwan naming conventions
 - 📊 **Configurable Logging**: Verbose, normal, and quiet modes
 - 🎯 **Custom VICI Socket**: Support for non-standard socket paths
+- 📐 **Type Safe**: Full type hints for better IDE support and code quality
 
 ## Requirements
 
@@ -25,17 +28,23 @@ MIPsec monitors configured IPsec CHILD_SA tunnels and automatically resets conne
 
 ## Installation
 
-### 1. Install Python Dependencies
-
-```bash
-pip install vici PyYAML
-```
-
-### 2. Clone or Download
+### 1. Clone or Download
 
 ```bash
 git clone <repository-url>
 cd mipsec
+```
+
+### 2. Install Python Dependencies
+
+Using requirements.txt:
+```bash
+pip install -r requirements.txt
+```
+
+Or manually:
+```bash
+pip install vici PyYAML
 ```
 
 ### 3. Make Executable
@@ -90,22 +99,39 @@ Quiet mode (errors only):
 ./mipsec.py --quiet
 ```
 
+Run in daemon mode (continuous monitoring):
+```bash
+./mipsec.py --daemon --interval 60
+```
+
+Configure retry behavior:
+```bash
+./mipsec.py --max-retries 5 --retry-delay 3
+```
+
 ### Full Options
 
 ```
-usage: mipsec.py [-h] [--socket SOCKET] [--config CONFIG] [--verbose] [--quiet] [tunnels ...]
+usage: mipsec.py [-h] [--socket SOCKET] [--config CONFIG] [--verbose] [--quiet]
+                 [--daemon] [--interval INTERVAL] [--max-retries MAX_RETRIES]
+                 [--retry-delay RETRY_DELAY]
+                 [tunnels ...]
 
-A script to monitor and reset tunnels.
+A script to monitor and reset StrongSwan IPsec tunnels via VICI.
 
 positional arguments:
-  tunnels          The list of CHILD_SAs to monitor and reestablish
+  tunnels                       The list of CHILD_SAs to monitor and reestablish
 
 optional arguments:
-  -h, --help       show this help message and exit
-  --socket SOCKET  If a non-standard path to the VICI socket is used, the path to it is set with this argument.
-  --config CONFIG  The path to the optional configuration file.
-  --verbose        Print additional information
-  --quiet          Disable any non-error output from the script
+  -h, --help                    show this help message and exit
+  --socket SOCKET               If a non-standard path to the VICI socket is used
+  --config CONFIG               The path to the optional configuration file (default: /opt/mipsec/mipsec.yaml)
+  --verbose                     Print additional information
+  --quiet                       Disable any non-error output from the script
+  --daemon                      Run in daemon mode with continuous monitoring
+  --interval INTERVAL           Interval in seconds between checks in daemon mode (default: 300)
+  --max-retries MAX_RETRIES     Maximum number of retries for failed ipsec commands (default: 3)
+  --retry-delay RETRY_DELAY     Base delay in seconds between retries, uses exponential backoff (default: 2)
 ```
 
 ## Configuration File Format
@@ -118,7 +144,48 @@ The configuration file should be a YAML list of tunnel names (CHILD_SA configura
 - remote-site
 ```
 
-## Cron Integration
+## Daemon Mode and Service Integration
+
+### Daemon Mode
+
+Run as a persistent daemon with continuous monitoring:
+
+```bash
+./mipsec.py --daemon --interval 60
+```
+
+This will check tunnels every 60 seconds and run indefinitely.
+
+### Systemd Service
+
+Create `/etc/systemd/system/mipsec.service`:
+
+```ini
+[Unit]
+Description=MIPsec StrongSwan Tunnel Monitor
+After=network.target strongswan.service
+Wants=strongswan.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/mipsec/mipsec.py --daemon --interval 300 --config /opt/mipsec/mipsec.yaml
+Restart=always
+RestartSec=10
+User=root
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl enable mipsec
+sudo systemctl start mipsec
+sudo systemctl status mipsec
+```
+
+### Cron Integration (Alternative)
 
 To run every 5 minutes:
 
@@ -138,7 +205,12 @@ To run with logging:
 2. **Connect to VICI**: Establishes connection to StrongSwan's VICI socket
 3. **Query Status**: Lists all Security Associations (SAs) and their CHILD_SAs
 4. **Check State**: Verifies each configured tunnel is in `INSTALLED` state
-5. **Reset Down Tunnels**: Executes `ipsec down <tunnel>` for any non-operational tunnels
+5. **Reset Down Tunnels**: For any non-operational tunnels:
+   - Executes `ipsec down <tunnel>` to tear down the connection
+   - Waits 1 second
+   - Executes `ipsec up <tunnel>` to re-establish the connection
+6. **Retry on Failure**: If ipsec commands fail, retries with exponential backoff (configurable)
+7. **Continuous Monitoring** (Daemon Mode): Repeats the check at configured intervals
 
 ### Version Compatibility
 
@@ -148,11 +220,13 @@ The tool handles two StrongSwan naming conventions:
 
 ## Exit Codes
 
-- `0` - Success (all tunnels up or successfully reset)
-- `1` - No tunnels configured or invalid arguments
+- `0` - Success (all tunnels up)
+- `1` - Some tunnels were down (may have been reset), or VICI query error, or no tunnels configured
 - `2` - Configuration file format error (not a list)
 - `3` - Configuration file contains non-string items
 - `4` - Critical error reading configuration file
+- `5` - Failed to connect to VICI socket
+- `6` - Critical error in daemon mode
 
 ## Permissions
 
@@ -184,60 +258,87 @@ Usually requires running as `root` or with `CAP_NET_ADMIN` capability.
 - Verify tunnel names match CHILD_SA configuration names
 - Run with `--verbose` to see detailed output
 
-## Known Issues & Improvement Suggestions
+## Recent Improvements
 
-### Critical Bugs
-1. **Line 88 Bug**: Variable name mismatch when removing tunnels from list (uses `childSAName` instead of matched variant)
+### Version 2.0 Changes
 
-### Code Quality Improvements
-2. PEP 8 violation: Class name should be `TunnelChecker` not `tunnelChecker`
-3. Missing type hints throughout
-4. Incomplete docstrings
-5. Logging setup creates duplicate handlers on re-instantiation
-6. Typos: "Reseting" → "Resetting", "occured" → "occurred"
+**Fixed Issues:**
+- ✅ Fixed critical bug on line 88 (variable name mismatch when removing tunnels)
+- ✅ Renamed class to `TunnelChecker` (PEP 8 compliance)
+- ✅ Added complete type hints throughout the codebase
+- ✅ Added comprehensive docstrings for all methods
+- ✅ Fixed logging handler duplication issue
+- ✅ Fixed typos: "Reseting" → "Resetting", "occured" → "occurred"
 
-### Functional Enhancements
-7. **No Auto-Recovery**: Currently only downs tunnels; should attempt `ipsec up` to restore
-8. **No Daemon Mode**: Runs once and exits; could support continuous monitoring
-9. **No Retry Logic**: Doesn't retry failed operations
-10. **Limited Metrics**: Could output statistics (uptime, failure counts, etc.)
-11. **Hardcoded Paths**: `/usr/sbin/ipsec` and default config path should be configurable
-12. **No Health Checks**: Could ping through tunnel to verify actual connectivity
+**New Features:**
+- ✅ Auto-Recovery: Now executes `ipsec up` after `ipsec down` to restore tunnels
+- ✅ Daemon Mode: Continuous monitoring with configurable intervals
+- ✅ Retry Logic: Exponential backoff retry mechanism for failed operations
+- ✅ Better Error Handling: Improved VICI connection error handling with informative messages
 
-### Infrastructure Improvements
-13. Add `requirements.txt` for dependency management
-14. Add unit and integration tests
-15. Add GitHub Actions for CI/CD
-16. Better error handling for VICI connection failures
-17. Add systemd service file for daemon mode
-18. Support for metrics export (Prometheus, InfluxDB, etc.)
+**Infrastructure:**
+- ✅ Added `requirements.txt` for dependency management
+- ✅ Documented systemd service integration
+
+### Future Improvement Suggestions
+
+**Functional Enhancements:**
+1. **Health Checks**: Ping through tunnel to verify actual connectivity (not just SA state)
+2. **Metrics Export**: Support for Prometheus, InfluxDB, or other monitoring systems
+3. **Configurable Paths**: Make `/usr/sbin/ipsec` path configurable
+4. **Notification System**: Email/webhook alerts when tunnels go down
+5. **Multiple Check Strategies**: Support for active probing, not just passive SA monitoring
+
+**Infrastructure:**
+6. Add unit and integration tests
+7. Add GitHub Actions for CI/CD
+8. Create pre-built packages (deb, rpm)
+9. Add configuration validation tool
+10. Support for multiple configuration file formats (JSON, TOML)
 
 ## Architecture
 
 ```
-┌─────────────────┐
-│   mipsec.py     │
-│  (Main Script)  │
-└────────┬────────┘
+┌─────────────────────────┐
+│     mipsec.py           │
+│   (Main Script)         │
+│  ┌─────────────────┐    │
+│  │ TunnelChecker   │    │
+│  │ - Type Safe     │    │
+│  │ - Retry Logic   │    │
+│  │ - Auto-Recovery │    │
+│  └─────────────────┘    │
+└────────┬────────────────┘
          │
-         ├─── Reads ───► mipsec.yaml (Config)
+         ├─── Reads ────────────────► mipsec.yaml (Config)
          │
-         ├─── Connects ───► /var/run/charon.vici (VICI Socket)
+         ├─── Connects ─────────────► /var/run/charon.vici (VICI Socket)
          │
-         ├─── Queries ───► StrongSwan (SA Status)
+         ├─── Queries ──────────────► StrongSwan (SA Status via VICI)
          │
-         └─── Executes ───► /usr/sbin/ipsec down <tunnel>
+         └─── For Down Tunnels:
+              ├─── Execute ────────► /usr/sbin/ipsec down <tunnel>
+              ├─── Wait 1s
+              ├─── Execute ────────► /usr/sbin/ipsec up <tunnel>
+              └─── Retry on Failure (Exponential Backoff)
+
+         ┌──────────────────┐
+         │  Daemon Mode     │
+         │  (Optional)      │
+         │  Repeats every   │
+         │  N seconds       │
+         └──────────────────┘
 ```
 
 ## Contributing
 
-Contributions are welcome! Priority areas:
-1. Fix the line 88 variable bug
-2. Add type hints
-3. Implement auto-recovery (ipsec up)
-4. Add daemon mode with continuous monitoring
-5. Create unit tests
-6. Add systemd service file
+Contributions are welcome! Priority areas for future development:
+1. **Testing**: Add unit and integration tests
+2. **Health Checks**: Implement active connectivity verification (ping through tunnel)
+3. **Metrics Export**: Add Prometheus/InfluxDB support
+4. **Notification System**: Email/webhook alerts for tunnel failures
+5. **CI/CD**: Set up GitHub Actions for automated testing and releases
+6. **Packaging**: Create deb/rpm packages for easy installation
 
 ## License
 
